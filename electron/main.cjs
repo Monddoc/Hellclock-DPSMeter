@@ -1,0 +1,179 @@
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const path = require('path');
+const fs = require('fs');
+
+let mainWindow;
+
+const configPath = path.join(app.getPath('userData'), 'window-state.json');
+
+function getSavedBounds() {
+  try {
+    if (fs.existsSync(configPath)) {
+      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  return { width: 500, height: 700 };
+}
+
+function saveBounds(bounds) {
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(bounds));
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function createWindow() {
+  const bounds = getSavedBounds();
+  
+  mainWindow = new BrowserWindow({
+    width: bounds.width || 500,
+    height: bounds.height || 700,
+    x: bounds.x,
+    y: bounds.y,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  });
+
+  const isDev = process.env.NODE_ENV === 'development';
+  if (isDev) {
+    mainWindow.loadURL('http://localhost:5173');
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+  }
+
+  // Save bounds when window is resized or moved
+  mainWindow.on('close', () => saveBounds(mainWindow.getBounds()));
+  
+  let resizeTimer;
+  mainWindow.on('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => saveBounds(mainWindow.getBounds()), 500);
+  });
+
+  mainWindow.on('move', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => saveBounds(mainWindow.getBounds()), 500);
+  });
+
+  // Force always on top (pop-up-menu is safer than screen-saver for mouse events on Windows)
+  mainWindow.setAlwaysOnTop(true, 'pop-up-menu');
+}
+
+app.whenReady().then(() => {
+  createWindow();
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+// IPC Handlers
+ipcMain.on('window-controls', (event, action) => {
+  if (!mainWindow) return;
+  if (action === 'close') {
+    app.quit();
+  } else if (action === 'minimize') {
+    mainWindow.minimize();
+  }
+});
+
+ipcMain.on('set-opacity', (event, opacity) => {
+  if (mainWindow) {
+    mainWindow.setOpacity(opacity);
+  }
+});
+
+ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
+  if (mainWindow) {
+    mainWindow.setIgnoreMouseEvents(ignore, options);
+  }
+});
+
+// File Parser Setup
+let currentLogPath = '';
+let lastSize = 0;
+
+ipcMain.handle('select-folder', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory']
+  });
+  if (!result.canceled && result.filePaths.length > 0) {
+    return result.filePaths[0];
+  }
+  return null;
+});
+
+ipcMain.handle('start-watching', (event, folderPath) => {
+  if (currentLogPath) {
+    fs.unwatchFile(currentLogPath);
+  }
+  const filePath = path.join(folderPath, 'Damage.log');
+  currentLogPath = filePath;
+  lastSize = 0;
+  
+  if (fs.existsSync(filePath)) {
+    lastSize = fs.statSync(filePath).size;
+    
+    // Using watchFile for reliable size tracking, watching every 500ms
+    fs.watchFile(filePath, { interval: 500 }, (curr, prev) => {
+      if (curr.size < prev.size) {
+        // File was cleared
+        lastSize = curr.size;
+        mainWindow.webContents.send('log-cleared');
+      } else if (curr.size > prev.size) {
+        // Read new data
+        const stream = fs.createReadStream(filePath, {
+          start: lastSize,
+          end: curr.size,
+          encoding: 'utf8'
+        });
+        
+        let newContent = '';
+        stream.on('data', chunk => {
+          newContent += chunk;
+        });
+        
+        stream.on('end', () => {
+          lastSize = curr.size;
+          const lines = newContent.split(/\r?\n/).filter(line => line.trim() !== '');
+          if (lines.length > 0) {
+            mainWindow.webContents.send('new-log-lines', lines);
+          }
+        });
+      }
+    });
+    return true;
+  }
+  return false;
+});
+
+ipcMain.handle('export-html', async (event, htmlContent) => {
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export Encounter Report',
+    defaultPath: 'HellClock_DamageReport.html',
+    filters: [{ name: 'HTML Files', extensions: ['html'] }]
+  });
+
+  if (!result.canceled && result.filePath) {
+    fs.writeFileSync(result.filePath, htmlContent, 'utf-8');
+    return true;
+  }
+  return false;
+});

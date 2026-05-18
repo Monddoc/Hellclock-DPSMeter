@@ -1,0 +1,14 @@
+directories:
+  output: dist-electron
+  buildResources: build
+appId: com.vladmir.hellclockdps
+productName: Hell Clock DPS
+files:
+  - filter:
+      - dist/**/*
+      - electron/**/*
+      - package.json
+win:
+  target:
+    - portable
+electronVersion: 42.1.0
