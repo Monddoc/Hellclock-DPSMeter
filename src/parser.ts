@@ -1,55 +1,64 @@
 import type { DamageEvent, DamageType, AilmentType } from './types';
 
-export function parseLogLine(line: string): DamageEvent | null {
+export function parseLogLine(line: string): DamageEvent[] {
   // e.g. (04:38:17:116)S:Player|T:|SID:1|V:7,734.42|FIRE:7,734.42
   // e.g. (04:41:06:530)S:Summon  The  Guard -|T:Cursed Rat|SID:202|V:2,947.90|DOT|PHYSICAL:2,947.90
   
   const match = line.match(/^\((.*?)\)S:(.*?)\|T:(.*?)\|(?:SID|SK):(.*?)\|V:([\d,.]+)\|(.*)$/);
-  if (!match) return null;
+  if (!match) return [];
 
   const [, timeStr, sourceStr, targetStr, skillIdStr, valueStr, restStr] = match;
   
   const timeMs = parseTimeToMs(timeStr);
-  const value = parseFloat(valueStr.replace(/,/g, ''));
+  const totalValue = parseFloat(valueStr.replace(/,/g, ''));
   
   let isCrit = false;
   let isDot = false;
-  let damageType: DamageType = 'UNKNOWN';
-  let ailment: AilmentType = 'NONE';
   
   const tags = restStr.split('|');
+  const typeValues: { type: DamageType, value: number }[] = [];
   
   for (const tag of tags) {
     if (tag === 'CRIT') isCrit = true;
     else if (tag === 'DOT') isDot = true;
-    else if (tag.startsWith('PHYSICAL:')) {
-      damageType = 'PHYSICAL';
-    } else if (tag.startsWith('FIRE:')) {
-      damageType = 'FIRE';
-    } else if (tag.startsWith('LIGHTNING:')) {
-      damageType = 'LIGHTNING';
-    } else if (tag.startsWith('PLAGUE:')) {
-      damageType = 'PLAGUE';
-    }
+    else if (tag.startsWith('PHYSICAL:')) typeValues.push({ type: 'PHYSICAL', value: parseFloat(tag.split(':')[1].replace(/,/g, '')) });
+    else if (tag.startsWith('FIRE:')) typeValues.push({ type: 'FIRE', value: parseFloat(tag.split(':')[1].replace(/,/g, '')) });
+    else if (tag.startsWith('LIGHTNING:')) typeValues.push({ type: 'LIGHTNING', value: parseFloat(tag.split(':')[1].replace(/,/g, '')) });
+    else if (tag.startsWith('PLAGUE:')) typeValues.push({ type: 'PLAGUE', value: parseFloat(tag.split(':')[1].replace(/,/g, '')) });
   }
 
-  // Determine ailments based on DoT + Base Type (as requested by user)
-  if (isDot && damageType === 'PHYSICAL') ailment = 'BLEED';
-  if (isDot && damageType === 'FIRE') ailment = 'IGNITE';
+  const events: DamageEvent[] = [];
+  
+  const createEvent = (damageType: DamageType, val: number, critFlag: boolean): DamageEvent => {
+    let ailment: AilmentType = 'NONE';
+    if (isDot && damageType === 'PHYSICAL') ailment = 'BLEED';
+    if (isDot && damageType === 'FIRE') ailment = 'IGNITE';
 
-  return {
-    timestamp: timeStr,
-    timeMs,
-    source: sourceStr.trim(),
-    target: targetStr.trim() || 'Unknown Target',
-    skillId: cleanSkillName(skillIdStr),
-    value,
-    damageType,
-    ailment,
-    isCrit,
-    isDot,
-    rawLine: line
+    return {
+      timestamp: timeStr,
+      timeMs,
+      source: sourceStr.trim(),
+      target: targetStr.trim() || 'Unknown Target',
+      skillId: cleanSkillName(skillIdStr),
+      value: val,
+      damageType,
+      ailment,
+      isCrit: critFlag,
+      isDot,
+      rawLine: line
+    };
   };
+
+  if (typeValues.length > 0) {
+    for (let i = 0; i < typeValues.length; i++) {
+      // Only the first event from a split hit carries the crit flag to avoid double-counting
+      events.push(createEvent(typeValues[i].type, typeValues[i].value, i === 0 ? isCrit : false));
+    }
+  } else {
+    events.push(createEvent('UNKNOWN', totalValue, isCrit));
+  }
+
+  return events;
 }
 
 function parseTimeToMs(timeStr: string): number {

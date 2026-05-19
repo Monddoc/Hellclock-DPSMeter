@@ -1,12 +1,15 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
 let mainWindow;
 
+const isDev = process.env.NODE_ENV === 'development';
+
 function logToBrowser(msg) {
+  if (!isDev) return; // Only emit debug logs in development
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.executeJavaScript(`console.log("BACKEND: ${msg.replace(/"/g, '\\"')}")`).catch(()=>{});
+    mainWindow.webContents.send('backend-log', String(msg));
   }
 }
 
@@ -50,7 +53,6 @@ function createWindow() {
     }
   });
 
-  const isDev = process.env.NODE_ENV === 'development';
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
   } else {
@@ -78,11 +80,42 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
+  let isLocked = false;
+
+  const toggleLock = () => {
+    if (!mainWindow) return;
+    isLocked = !isLocked;
+    // setIgnoreMouseEvents called directly here in the main process — always works
+    mainWindow.setIgnoreMouseEvents(isLocked, { forward: true });
+    // Notify renderer to update its UI (lock icon, indicator)
+    mainWindow.webContents.send('lock-state-changed', isLocked);
+  };
+
+  globalShortcut.register('CommandOrControl+Shift+L', toggleLock);
+  globalShortcut.register('F8', toggleLock);
+
+  // Allow renderer to request a lock toggle (e.g. clicking the padlock button)
+  ipcMain.on('request-toggle-lock', () => toggleLock());
+
+  // Minimalist mode exit shortcut (F9)
+  globalShortcut.register('F9', () => {
+    if (mainWindow) mainWindow.webContents.send('exit-minimalist');
+  });
+
+  // Allow renderer to also request exit-minimalist via IPC (button click)
+  ipcMain.on('request-exit-minimalist', () => {
+    if (mainWindow) mainWindow.webContents.send('exit-minimalist');
+  });
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on('window-all-closed', () => {
@@ -107,11 +140,7 @@ ipcMain.on('set-opacity', (event, opacity) => {
   }
 });
 
-ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
-  if (mainWindow) {
-    mainWindow.setIgnoreMouseEvents(ignore, options);
-  }
-});
+// Lock is now managed entirely in main process via request-toggle-lock and globalShortcut
 
 // File Parser Setup
 let currentLogPath = '';

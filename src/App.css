@@ -121,12 +121,34 @@ body {
   gap: 8px;
 }
 
+/* Styled scrollbar — matches UI colors and respects transparency */
 .content::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
+}
+.content::-webkit-scrollbar-track {
+  background: transparent;
 }
 .content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+.content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+/* Firefox */
+.content {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+
+/* Hide scrollbar track in minimalist mode, scroll still works via wheel */
+.minimalist .content::-webkit-scrollbar {
+  width: 0;
+  background: transparent;
+}
+.minimalist .content {
+  scrollbar-width: none;
 }
 
 .setup-screen {
@@ -264,4 +286,41 @@ body {
   margin: 0;
   font-size: 18px;
   color: #fff;
+}
+
+/* Advanced Features Styles */
+.minimalist .title-bar, 
+.minimalist .tabs, 
+.minimalist .encounter-header, 
+.minimalist .toolbar { 
+  display: none !important; 
+}
+
+.minimalist { 
+  border: none !important; 
+  box-shadow: none !important; 
+  background: transparent !important; 
+}
+
+.locked-btn { 
+  color: #ff4444 !important; 
+}
+
+.minimalist-exit { 
+  position: absolute; 
+  top: 0; 
+  right: 0; 
+  padding: 10px; 
+  background: rgba(0,0,0,0.8); 
+  color: white; 
+  cursor: pointer; 
+  z-index: 1000; 
+  opacity: 0; 
+  transition: opacity 0.2s; 
+  border-bottom-left-radius: 8px; 
+  font-size: 12px; 
+}
+
+.minimalist-exit:hover { 
+  opacity: 1; 
 }

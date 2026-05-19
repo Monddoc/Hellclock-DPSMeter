@@ -43,12 +43,16 @@ declare global {
     electronAPI: {
       windowControl: (action: 'close' | 'minimize') => void;
       setOpacity: (opacity: number) => void;
-      setIgnoreMouseEvents: (ignore: boolean, options?: { forward: boolean }) => void;
       selectFolder: () => Promise<string | null>;
       startWatching: (folderPath: string) => Promise<boolean>;
       exportHtml: (htmlContent: string) => Promise<boolean>;
       onNewLogLines: (callback: (lines: string[]) => void) => void;
       onLogCleared: (callback: () => void) => void;
+      onLockStateChanged: (callback: (locked: boolean) => void) => void;
+      requestToggleLock: () => void;
+      onExitMinimalist: (callback: () => void) => void;
+      requestExitMinimalist: () => void;
+      onBackendLog: (callback: (msg: string) => void) => void;
     };
   }
 }

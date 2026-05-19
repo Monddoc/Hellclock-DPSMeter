@@ -1,81 +1,91 @@
 # ⚔️ Hell Clock DPS Meter
 
-A lightweight, secure, and beautiful real-time DPS meter and combat analyzer designed for the ARPG **Hell Clock**.
-
-Built with **React, Vite, TypeScript, and Electron**, this tool provides a frameless, transparent overlay that sits seamlessly over your game, reading your `Damage.log` file in real-time without injecting into or modifying the game client.
+A lightweight, secure, and beautiful real-time DPS overlay and combat analyzer for the ARPG **Hell Clock**. It runs as a transparent window on top of your game, reading combat logs in real-time.
 
 ---
 
-## ✨ Features
+## 🚀 Quick Start (Players)
 
-- **Real-Time Combat Parsing:** Instantly reads and updates damage as the `Damage.log` updates.
-- **Dealt & Received Breakdown:** Easily toggle between damage you've dealt to enemies and damage enemies have dealt to you.
-- **Death Cause Analysis:** Prominently displays the **Latest Hit Received** (including the exact enemy name, Skill ID, and damage type) to help you understand exactly what killed you.
-- **Advanced Encounter Reports:** Export your combat sessions into interactive, beautifully styled HTML reports. The reports feature pure CSS/HTML stacked bar charts to analyze Element Damage distribution, Critical Hit rates, and Ailment (Bleed/Ignite) contributions. Works 100% offline and clearly labels the source of every hit.
-- **Source Tracking:** Distinctly tracks and separates damage dealt by the Player versus your Summons, even when using the exact same skills.
-- **Transparent Overlay:** A sleek, dark-themed UI with adjustable opacity that sits gracefully on top of your game window.
-- **Resizable Columns:** Drag and resize columns to customize your data view.
-- **Fast-Launch Archive:** Distributed as a highly compressed `.7z` file. Just extract it once, double click the .exe, select the folder where your damage log is located, and the app launches instantly with zero installation footprint, no registry keys, and no administrator privileges required.
-
----
-
-## 🔒 Security Posture
-
-This application is built with security as a primary concern:
-- **Zero Vulnerabilities:** All dependencies are up to date with zero known vulnerabilities.
-- **Sandboxed Electron:** Strict Electron security policies are enforced (`nodeIntegration: false`, `contextIsolation: true`). The frontend UI has zero direct access to the Node.js file system.
-- **Strict IPC Bridge:** Communication between the UI and backend is tightly controlled. The renderer can only trigger bounded, predefined actions (like selecting a folder or saving an HTML file).
-- **ReDoS Immune:** Log parsing relies on strict string splitting and index mapping rather than nested regular expressions, making it immune to Regular Expression Denial of Service attacks.
-- **Memory Efficient:** The file watcher reads only byte deltas rather than loading the entire 50MB log file into memory, preventing crashes during multi-hour gaming sessions.
+### Step 1: Enable Damage Logging in Steam
+You **must** enable damage logging in the game client for the DPS meter to work:
+1. Open your **Steam Library**.
+2. Right-click **Hell Clock** and select **Properties**.
+3. In the **General** tab, scroll down to **Launch Options**.
+4. Paste the following launch option:
+   ```text
+   --damageLog
+   ```
+5. Close the window and launch the game. This will generate a `Damage.log` file in your game directory containing all real-time combat data.
 
 ---
 
-## 🎮 Usage (For Players)
-
-1. Download the latest release `.zip` file.
-2. **Extract the `.zip` file** to a permanent location (e.g., your Desktop or Documents folder). *Do not run the `.exe` directly from inside the unextracted zip window.*
-3. Open the newly extracted folder and double-click `Hell Clock DPS.exe` to run it.
-4. Click **"Select Game Folder"** and choose the folder where your `Damage.log` file is located.
-5. Go play! The window will stay on top of your game. You can adjust opacity using the slider at the bottom.
-5. Click **"Report"** after a boss fight to see a detailed breakdown and export it to an interactive HTML file.
+### Step 2: Download & Extract
+1. Download the latest `Hell Clock DPS-x.x.x-win.7z` archive from the **Releases** tab.
+2. **Extract the archive** using a tool like [7-Zip](https://www.7-zip.org/) or WinRAR into a permanent folder (e.g. `C:\Users\YourName\Documents\`).
+   > ⚠️ **IMPORTANT:** Running the `.exe` directly inside the unextracted compressed view will cause crashes. Always extract the folder first!
+3. Open the extracted folder and double-click `Hell Clock DPS.exe`.
+4. Click **Select Game Folder** and navigate to your Hell Clock game folder (where `Damage.log` is generated).
 
 ---
 
-## 🛠️ Development & Building (For Contributors)
+## 🎮 Key Controls & Features
 
-If you wish to modify the code or build the release archive yourself from the source code, follow these steps:
+### Core Hotkeys
+| Action | Key Combination | Description |
+|---|---|---|
+| **Toggle Lock** | `F8` or `Ctrl+Shift+L` | Locks window in place, enabling **Click-Through** so you can click *behind* it directly into the game. |
+| **Exit Minimalist** | `F9` | Restores standard borders and buttons when in Minimalist mode. |
+
+### Advanced Features
+*   **Minimalist Mode:** Click the `🗗` icon in the title bar to strip all borders, backgrounds, and buttons for a clean, floating in-game experience.
+*   **Custom Opacity:** Use the opacity slider at the bottom to adjust how translucent the overlay is.
+*   **Metric Toggling:** Toggle between sorting your rows by **Total Damage** or **DPS** with a single click.
+*   **Combat History:** Review up to the last 3 combat sessions using the `-1`, `-2`, and `-3` buttons on the toolbar. Click `← Live` to return to real-time parsing.
+*   **Encounter Report:** Click **Report** to open a comprehensive death-analysis modal or export a beautiful, self-contained offline HTML chart to share with your friends.
+
+---
+
+## 📸 Interface Preview
+*(Screenshots Soon!)
+
+| Main HUD Overlay | Combat Report | Minimalist Mode |
+|---|---|---|
+| ![HUD Placeholder](https://via.placeholder.com/350x220?text=Sleek+HUD+Overlay) | ![Report Placeholder](https://via.placeholder.com/350x220?text=Interactive+Charts) | ![Minimalist Placeholder](https://via.placeholder.com/350x220?text=Zero+Borders) |
+
+---
+
+## 🛠️ Development & Local Run (Developers)
+
+If you'd like to run or build the application from source code:
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) (v18 or higher recommended)
-- A terminal with Administrator privileges (required ONLY for the final `.exe` packaging step on Windows).
+*   [Node.js](https://nodejs.org/) (v18 or higher)
+*   **Administrator Terminal** (Required only for packaging the final release executable on Windows)
 
 ### 1. Installation
-Clone the repository and install the dependencies:
+Clone the repository and install dependencies:
 ```bash
 git clone https://github.com/Monddoc/Hellclock-DPSMeter.git
 cd Hellclock-DPSMeter
 npm install
 ```
 
-### 2. Running in Development Mode
-This will launch the app with Hot-Module Replacement (HMR) enabled. Whenever you save a `.tsx` or `.css` file, the app will update instantly.
+### 2. Run Locally in Development Mode
+Launches the Electron application with instant Hot-Module Reloading (HMR) for the interface:
 ```bash
 npm run dev
 ```
 
-### 3. Building the Release `.zip`
-Because `electron-builder` must create specific Windows symbolic links during the packaging phase, **you must run your terminal as an Administrator** to build the app.
-
-1. Open **cmd** or **PowerShell** as Administrator.
-2. Navigate to the project folder.
-3. Run the build script:
-```bash
-npm run build:exe
-```
-4. Once completed, your new `.zip` archive will be automatically generated and moved directly into the root folder of the project!
+### 3. Build a New Release Archive
+This will compile the TypeScript, bundle the Vite client, clean older distribution zip files, and build a optimized instant-launch `.7z` distribution folder:
+1. Open PowerShell or Command Prompt **as Administrator**.
+2. Run the build script:
+   ```bash
+   npm run build:exe
+   ```
+3. Your new release archive will be saved cleanly in the root directory.
 
 ---
 
 ## 📝 License
-
-This project is licensed under the MIT License. Feel free to fork, modify, and distribute!
+This project is licensed under the MIT License. Feel free to fork, modify, and share!
