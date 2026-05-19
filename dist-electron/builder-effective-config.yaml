@@ -3,6 +3,7 @@ directories:
   buildResources: build
 appId: com.vladmir.hellclockdps
 productName: Hell Clock DPS
+compression: maximum
 files:
   - filter:
       - dist/**/*
@@ -10,5 +11,5 @@ files:
       - package.json
 win:
   target:
-    - portable
+    - 7z
 electronVersion: 42.1.0

@@ -84,7 +84,7 @@ function App() {
 
         // Base Damage type is used for grouping (ailments are grouped into base type in the parser logic)
         const baseType = (ev.isDot && ev.damageType === 'PHYSICAL') ? 'PHYSICAL' : (ev.isDot && ev.damageType === 'FIRE') ? 'FIRE' : ev.damageType;
-        const rowKey = `${ev.skillId}_${baseType}`;
+        const rowKey = `${ev.source}_${ev.skillId}_${baseType}`;
 
         if (isPlayerSource) {
           next.totalDamageDealt += ev.value;
@@ -204,13 +204,14 @@ function App() {
         
         <DamageMeter 
           skills={activeTab === 'dealt' ? encounter.dealtSkills : encounter.receivedSkills} 
+          isDealtTab={activeTab === 'dealt'}
         />
         
         {activeTab === 'received' && encounter.lastHitReceived && (
           <div style={{ padding: '8px', background: 'rgba(255, 69, 0, 0.1)', border: '1px solid rgba(255, 69, 0, 0.3)', borderRadius: '4px', marginTop: '8px', fontSize: '12px' }}>
             <div style={{ color: 'var(--color-fire)', fontWeight: 'bold', marginBottom: '4px', fontSize: '10px' }}>LATEST HIT RECEIVED</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: '500' }}>{encounter.lastHitReceived.source} (SID: {encounter.lastHitReceived.skillId})</span>
+              <span style={{ fontWeight: '500' }}>{encounter.lastHitReceived.source} (SK: {encounter.lastHitReceived.skillId})</span>
               <span style={{ fontWeight: 'bold' }}>
                 {encounter.lastHitReceived.value.toLocaleString(undefined, { maximumFractionDigits: 0 })} 
                 <span style={{ color: `var(--color-${encounter.lastHitReceived.damageType.toLowerCase()})`, fontSize: '10px', marginLeft: '6px' }}>{encounter.lastHitReceived.damageType}</span>

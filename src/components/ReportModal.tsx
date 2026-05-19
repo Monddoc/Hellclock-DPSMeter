@@ -146,7 +146,7 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
             <div class="last-hit">
               <div style="color: var(--color-fire); font-weight: bold; margin-bottom: 8px; font-size: 0.85em; letter-spacing: 1px;">LATEST HIT RECEIVED</div>
               <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-weight: 500; font-size: 1.1em;">${encounter.lastHitReceived.source} (SID: ${encounter.lastHitReceived.skillId})</span>
+                <span style="font-weight: 500; font-size: 1.1em;">${encounter.lastHitReceived.source === 'Player' ? encounter.lastHitReceived.skillId : `${encounter.lastHitReceived.source} | ${encounter.lastHitReceived.skillId}`}</span>
                 <span style="font-weight: bold; font-size: 1.2em; font-family: monospace;">
                   ${encounter.lastHitReceived.value.toLocaleString(undefined, { maximumFractionDigits: 0 })} 
                   <span style="color: var(--color-${encounter.lastHitReceived.damageType.toLowerCase()}); font-size: 0.8em; margin-left: 8px;">${encounter.lastHitReceived.damageType}</span>
@@ -156,7 +156,7 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
       `;
     }
 
-    const addTable = (title: string, skills: Record<string, SkillDamageRow>, extraHtml: string = "") => {
+    const addTable = (title: string, skills: Record<string, SkillDamageRow>, extraHtml: string = "", isDealt: boolean = false) => {
       const sorted = Object.values(skills).sort((a, b) => b.totalDamage - a.totalDamage);
       if (sorted.length === 0) return;
       html += `<h2>${title}</h2>`;
@@ -164,6 +164,7 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
       html += `
         <table>
           <tr>
+            ${isDealt ? '<th>SOURCE</th>' : ''}
             <th>SKILL</th>
             <th>TYPE</th>
             <th class="numeric">HITS</th>
@@ -173,7 +174,7 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
             <th>AILMENTS</th>
           </tr>`;
       sorted.forEach(row => {
-        const name = row.source === 'Player' ? `SID: ${row.skillId}` : `${row.source} (SID: ${row.skillId})`;
+        const name = isDealt ? row.skillId : (row.source === 'Player' ? row.skillId : `${row.source} | ${row.skillId}`);
         const ailments = Object.entries(row.ailmentDamage)
           .filter(([_, val]) => val > 0)
           .map(([type, val]) => `${type}: ${val.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${((val/row.totalDamage)*100).toFixed(1)}%)`)
@@ -183,6 +184,7 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
         const typeClass = getColorClass(row.damageType);
         
         html += `<tr>
+          ${isDealt ? `<td style="color: #aaa; font-size: 0.9em;">${row.source}</td>` : ''}
           <td style="font-weight: 500;">${name}</td>
           <td class="${typeClass}" style="font-size: 0.85em; letter-spacing: 0.5px;">${row.damageType}</td>
           <td class="numeric" style="color: #ccc;">${row.totalHits}</td>
@@ -195,8 +197,8 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
       html += `</table>`;
     };
 
-    addTable("DAMAGE DEALT", encounter.dealtSkills);
-    addTable("DAMAGE RECEIVED", encounter.receivedSkills, lastHitHtml);
+    addTable("DAMAGE DEALT", encounter.dealtSkills, "", true);
+    addTable("DAMAGE RECEIVED", encounter.receivedSkills, lastHitHtml, false);
     html += `</div>`; // End Tab 1
 
     // TAB 2: DAMAGE TYPES
@@ -222,7 +224,7 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
     html += `<div id="tab-crits" class="tab-content"><h2>CRITICAL HIT RATES (DEALT)</h2>`;
     dealtSorted.forEach(row => {
       if (row.totalHits === 0) return;
-      const name = row.source === 'Player' ? `SID: ${row.skillId}` : `${row.source} (SID: ${row.skillId})`;
+      const name = row.source === 'Player' ? row.skillId : `${row.source} | ${row.skillId}`;
       const critPct = (row.critHits / row.totalHits) * 100;
       const nonCritPct = 100 - critPct;
       html += `
@@ -241,7 +243,7 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
     // TAB 4: AILMENTS ANALYSIS
     html += `<div id="tab-ailments" class="tab-content"><h2>AILMENT CONTRIBUTION (BLEED / IGNITE)</h2>`;
     dealtSorted.forEach(row => {
-      const name = row.source === 'Player' ? `SID: ${row.skillId}` : `${row.source} (SID: ${row.skillId})`;
+      const name = row.source === 'Player' ? row.skillId : `${row.source} | ${row.skillId}`;
       const bleedDmg = row.ailmentDamage['BLEED'] || 0;
       const igniteDmg = row.ailmentDamage['IGNITE'] || 0;
       const totalAilment = bleedDmg + igniteDmg;
@@ -292,7 +294,7 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
     await window.electronAPI.exportHtml(html);
   };
 
-  const renderStats = (skills: Record<string, SkillDamageRow>, title: string, extraHeaderNode?: React.ReactNode) => {
+  const renderStats = (skills: Record<string, SkillDamageRow>, title: string, extraHeaderNode?: React.ReactNode, isDealt?: boolean) => {
     const sorted = Object.values(skills).sort((a, b) => b.totalDamage - a.totalDamage);
     if (sorted.length === 0) return <p style={{ color: '#aaa' }}>No data for {title.toLowerCase()}.</p>;
 
@@ -303,13 +305,16 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
         </h3>
         {extraHeaderNode}
         {sorted.map(row => {
-          const displayName = `${row.source} (SID: ${row.skillId})`;
+          const displayName = isDealt ? row.skillId : (row.source === 'Player' ? row.skillId : `${row.source} | ${row.skillId}`);
           const critPercent = row.totalHits > 0 ? ((row.critHits / row.totalHits) * 100).toFixed(1) : '0.0';
 
           return (
             <div key={row.key} style={{ marginBottom: 15, background: 'rgba(0,0,0,0.3)', padding: 10, borderRadius: 4 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <strong style={{ fontSize: 16 }}>{displayName} <span style={{fontSize: 12, color: '#aaa', marginLeft: 8}}>{row.damageType}</span></strong>
+                <strong style={{ fontSize: 16 }}>
+                  {isDealt && <span style={{ color: '#aaa', fontWeight: 'normal', marginRight: 8 }}>{row.source}</span>}
+                  {displayName} <span style={{fontSize: 12, color: '#aaa', marginLeft: 8}}>{row.damageType}</span>
+                </strong>
                 <span>
                   {row.totalDamage.toLocaleString(undefined, { maximumFractionDigits: 0 })} Dmg | {row.dps.toLocaleString(undefined, { maximumFractionDigits: 1 })} DPS
                 </span>
@@ -367,13 +372,13 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
           <strong>Total Received:</strong> {encounter.totalDamageReceived.toLocaleString(undefined, { maximumFractionDigits: 0 })}
         </div>
         
-        {renderStats(encounter.dealtSkills, "Damage Dealt")}
+        {renderStats(encounter.dealtSkills, "Damage Dealt", undefined, true)}
 
         {renderStats(encounter.receivedSkills, "Damage Received", encounter.lastHitReceived ? (
           <div style={{ padding: '12px', background: 'rgba(255, 69, 0, 0.1)', border: '1px solid rgba(255, 69, 0, 0.3)', borderRadius: '4px', marginBottom: '15px', marginTop: '10px' }}>
             <div style={{ color: 'var(--color-fire)', fontWeight: 'bold', marginBottom: '4px', fontSize: '12px' }}>LATEST HIT RECEIVED (POSSIBLE DEATH CAUSE)</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: '500' }}>{encounter.lastHitReceived.source} (SID: {encounter.lastHitReceived.skillId})</span>
+              <span style={{ fontWeight: '500' }}>{encounter.lastHitReceived.source === 'Player' ? encounter.lastHitReceived.skillId : `${encounter.lastHitReceived.source} | ${encounter.lastHitReceived.skillId}`}</span>
               <span style={{ fontWeight: 'bold', fontSize: '16px' }}>
                 {encounter.lastHitReceived.value.toLocaleString(undefined, { maximumFractionDigits: 0 })} 
                 <span style={{ color: `var(--color-${encounter.lastHitReceived.damageType.toLowerCase()})`, fontSize: '12px', marginLeft: '6px' }}>{encounter.lastHitReceived.damageType}</span>

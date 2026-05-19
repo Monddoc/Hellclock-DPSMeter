@@ -4,7 +4,7 @@ export function parseLogLine(line: string): DamageEvent | null {
   // e.g. (04:38:17:116)S:Player|T:|SID:1|V:7,734.42|FIRE:7,734.42
   // e.g. (04:41:06:530)S:Summon  The  Guard -|T:Cursed Rat|SID:202|V:2,947.90|DOT|PHYSICAL:2,947.90
   
-  const match = line.match(/^\((.*?)\)S:(.*?)\|T:(.*?)\|SID:(.*?)\|V:([\d,.]+)\|(.*)$/);
+  const match = line.match(/^\((.*?)\)S:(.*?)\|T:(.*?)\|(?:SID|SK):(.*?)\|V:([\d,.]+)\|(.*)$/);
   if (!match) return null;
 
   const [, timeStr, sourceStr, targetStr, skillIdStr, valueStr, restStr] = match;
@@ -42,7 +42,7 @@ export function parseLogLine(line: string): DamageEvent | null {
     timeMs,
     source: sourceStr.trim(),
     target: targetStr.trim() || 'Unknown Target',
-    skillId: skillIdStr,
+    skillId: cleanSkillName(skillIdStr),
     value,
     damageType,
     ailment,
@@ -61,4 +61,16 @@ function parseTimeToMs(timeStr: string): number {
   const seconds = parseInt(parts[2], 10);
   const ms = parseInt(parts[3], 10);
   return (hours * 3600000) + (minutes * 60000) + (seconds * 1000) + ms;
+}
+
+function cleanSkillName(name: string): string {
+  if (!name) return name;
+  return name
+    .replace(/Skill\s*Definition/gi, '')
+    .replace(/SkillDefinition/gi, '')
+    .replace(/Skill/gi, '')
+    .replace(/Definition/gi, '')
+    .replace(/\bQuils\b/gi, 'Quills')
+    .replace(/\s+/g, ' ')
+    .trim();
 }

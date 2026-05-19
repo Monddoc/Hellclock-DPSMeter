@@ -3,10 +3,11 @@ import type { SkillDamageRow } from '../types';
 
 interface Props {
   skills: Record<string, SkillDamageRow>;
+  isDealtTab?: boolean;
 }
 
-export const DamageMeter: React.FC<Props> = ({ skills }) => {
-  const [colWidths, setColWidths] = useState({ skill: 150, type: 80, hits: 50, damage: 100 });
+export const DamageMeter: React.FC<Props> = ({ skills, isDealtTab }) => {
+  const [colWidths, setColWidths] = useState({ source: 100, skill: 150, type: 80, hits: 50, damage: 100 });
 
   const sortedSkills = Object.values(skills).sort((a, b) => b.totalDamage - a.totalDamage);
   const maxDamage = sortedSkills.length > 0 ? sortedSkills[0].totalDamage : 1;
@@ -59,6 +60,7 @@ export const DamageMeter: React.FC<Props> = ({ skills }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', overflowX: 'auto', paddingBottom: '4px' }}>
       <div style={{ display: 'flex', fontSize: '11px', color: '#aaa', padding: '0 8px', borderBottom: '1px solid rgba(255,255,255,0.1)', userSelect: 'none' }}>
+        {isDealtTab && <div style={{ width: colWidths.source, position: 'relative', flexShrink: 0 }}>SOURCE<Resizer colName="source" /></div>}
         <div style={{ width: colWidths.skill, position: 'relative', flexShrink: 0 }}>SKILL<Resizer colName="skill" /></div>
         <div style={{ width: colWidths.type, position: 'relative', flexShrink: 0 }}>TYPE<Resizer colName="type" /></div>
         <div style={{ width: colWidths.hits, position: 'relative', flexShrink: 0, textAlign: 'right' }}>HITS<Resizer colName="hits" /></div>
@@ -68,7 +70,7 @@ export const DamageMeter: React.FC<Props> = ({ skills }) => {
       {sortedSkills.map(row => {
         const percentOfMax = (row.totalDamage / maxDamage) * 100;
         const color = getColorForType(row.damageType);
-        const displayName = `${row.source} (SID: ${row.skillId})`;
+        const displayName = isDealtTab ? row.skillId : (row.source === 'Player' ? row.skillId : `${row.source} | ${row.skillId}`);
 
         return (
           <div key={row.key} className="actor-row" style={{ padding: '0', position: 'relative' }}>
@@ -88,6 +90,11 @@ export const DamageMeter: React.FC<Props> = ({ skills }) => {
             
             {/* Content Columns */}
             <div style={{ display: 'flex', position: 'relative', zIndex: 1, padding: '6px 8px', alignItems: 'center', fontSize: '12px' }}>
+              {isDealtTab && (
+                <div style={{ width: colWidths.source, flexShrink: 0, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', paddingRight: '4px', color: '#aaa' }}>
+                  {row.source}
+                </div>
+              )}
               <div style={{ width: colWidths.skill, flexShrink: 0, fontWeight: '500', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', paddingRight: '4px' }}>
                 {displayName}
               </div>

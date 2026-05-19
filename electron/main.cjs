@@ -4,6 +4,12 @@ const fs = require('fs');
 
 let mainWindow;
 
+function logToBrowser(msg) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.executeJavaScript(`console.log("BACKEND: ${msg.replace(/"/g, '\\"')}")`).catch(()=>{});
+  }
+}
+
 const configPath = path.join(app.getPath('userData'), 'window-state.json');
 
 function getSavedBounds() {
@@ -39,7 +45,8 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      webSecurity: false
     }
   });
 
@@ -111,16 +118,20 @@ let currentLogPath = '';
 let lastSize = 0;
 
 ipcMain.handle('select-folder', async () => {
-  const result = await dialog.showOpenDialog({
+  logToBrowser('select-folder requested');
+  const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory']
   });
   if (!result.canceled && result.filePaths.length > 0) {
+    logToBrowser('Folder selected: ' + result.filePaths[0]);
     return result.filePaths[0];
   }
+  logToBrowser('Folder selection canceled');
   return null;
 });
 
 ipcMain.handle('start-watching', (event, folderPath) => {
+  logToBrowser('start-watching called with: ' + folderPath);
   if (currentLogPath) {
     fs.unwatchFile(currentLogPath);
   }
@@ -130,19 +141,26 @@ ipcMain.handle('start-watching', (event, folderPath) => {
   
   if (fs.existsSync(filePath)) {
     lastSize = fs.statSync(filePath).size;
+    logToBrowser('File exists, watching. Initial size: ' + lastSize);
     
     // Using watchFile for reliable size tracking, watching every 500ms
     fs.watchFile(filePath, { interval: 500 }, (curr, prev) => {
       if (curr.size < prev.size) {
+        logToBrowser('File cleared (size decreased)');
         // File was cleared
         lastSize = curr.size;
         mainWindow.webContents.send('log-cleared');
       } else if (curr.size > prev.size) {
+        logToBrowser('File size increased from ' + prev.size + ' to ' + curr.size);
         // Read new data
         const stream = fs.createReadStream(filePath, {
           start: lastSize,
           end: curr.size,
           encoding: 'utf8'
+        });
+        
+        stream.on('error', (err) => {
+          logToBrowser('Stream error: ' + err.message);
         });
         
         let newContent = '';
@@ -153,6 +171,7 @@ ipcMain.handle('start-watching', (event, folderPath) => {
         stream.on('end', () => {
           lastSize = curr.size;
           const lines = newContent.split(/\r?\n/).filter(line => line.trim() !== '');
+          logToBrowser('Extracted ' + lines.length + ' new lines');
           if (lines.length > 0) {
             mainWindow.webContents.send('new-log-lines', lines);
           }
@@ -161,6 +180,7 @@ ipcMain.handle('start-watching', (event, folderPath) => {
     });
     return true;
   }
+  logToBrowser('File does not exist: ' + filePath);
   return false;
 });
 
