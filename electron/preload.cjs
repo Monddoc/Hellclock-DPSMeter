@@ -1,5 +1,15 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+/**
+ * Helper: subscribe to an IPC channel and return an unsubscribe function.
+ * This prevents listener stacking when React effects re-run.
+ */
+function onChannel(channel, transform) {
+  const handler = (_event, ...args) => transform(...args);
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.removeListener(channel, handler);
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   windowControl: (action) => ipcRenderer.send('window-controls', action),
   setOpacity: (opacity) => ipcRenderer.send('set-opacity', opacity),
@@ -7,11 +17,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   startWatching: (folderPath) => ipcRenderer.invoke('start-watching', folderPath),
   exportHtml: (htmlContent) => ipcRenderer.invoke('export-html', htmlContent),
-  onNewLogLines: (callback) => ipcRenderer.on('new-log-lines', (_event, lines) => callback(lines)),
-  onLogCleared: (callback) => ipcRenderer.on('log-cleared', () => callback()),
-  onLockStateChanged: (callback) => ipcRenderer.on('lock-state-changed', (_event, locked) => callback(locked)),
+
+  // All on* methods return an unsubscribe function to prevent listener leaks
+  onNewLogLines: (callback) => onChannel('new-log-lines', (lines) => callback(lines)),
+  onLogCleared: (callback) => onChannel('log-cleared', () => callback()),
+  onLockStateChanged: (callback) => onChannel('lock-state-changed', (locked) => callback(locked)),
+  onToggleMinimalist: (callback) => onChannel('toggle-minimalist', () => callback()),
+  onBackendLog: (callback) => onChannel('backend-log', (msg) => callback(msg)),
+  onResetEncounter: (callback) => onChannel('reset-encounter', () => callback()),
+  onOpenReport: (callback) => onChannel('open-report', () => callback()),
+
+  // Requests to main process
   requestToggleLock: () => ipcRenderer.send('request-toggle-lock'),
-  onExitMinimalist: (callback) => ipcRenderer.on('exit-minimalist', () => callback()),
-  requestExitMinimalist: () => ipcRenderer.send('request-exit-minimalist'),
-  onBackendLog: (callback) => ipcRenderer.on('backend-log', (_event, msg) => callback(msg))
+  requestToggleMinimalist: () => ipcRenderer.send('request-toggle-minimalist'),
+
+  // Keybindings
+  getKeybindings: () => ipcRenderer.invoke('get-keybindings'),
+  saveKeybindings: (bindings) => ipcRenderer.invoke('save-keybindings', bindings),
 });

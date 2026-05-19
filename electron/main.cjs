@@ -13,6 +13,7 @@ function logToBrowser(msg) {
   }
 }
 
+// ── Window state persistence ──────────────────────────────────────
 const configPath = path.join(app.getPath('userData'), 'window-state.json');
 
 function getSavedBounds() {
@@ -34,6 +35,39 @@ function saveBounds(bounds) {
   }
 }
 
+// ── Keybindings persistence ───────────────────────────────────────
+const keybindingsPath = path.join(app.getPath('userData'), 'keybindings.json');
+
+const DEFAULT_KEYBINDINGS = {
+  toggleLock: 'F8',
+  toggleMinimalist: 'F9',
+  resetEncounter: '',
+  openReport: ''
+};
+
+function loadKeybindings() {
+  try {
+    if (fs.existsSync(keybindingsPath)) {
+      const data = JSON.parse(fs.readFileSync(keybindingsPath, 'utf8'));
+      return { ...DEFAULT_KEYBINDINGS, ...data };
+    }
+  } catch (e) {
+    console.error('Failed to load keybindings:', e);
+  }
+  return { ...DEFAULT_KEYBINDINGS };
+}
+
+function saveKeybindings(bindings) {
+  try {
+    fs.writeFileSync(keybindingsPath, JSON.stringify(bindings, null, 2));
+    return true;
+  } catch (e) {
+    console.error('Failed to save keybindings:', e);
+    return false;
+  }
+}
+
+// ── Window creation ───────────────────────────────────────────────
 function createWindow() {
   const bounds = getSavedBounds();
   
@@ -77,34 +111,99 @@ function createWindow() {
   mainWindow.setAlwaysOnTop(true, 'pop-up-menu');
 }
 
+// ── Application ready ─────────────────────────────────────────────
 app.whenReady().then(() => {
   createWindow();
 
   let isLocked = false;
+  let isMinimalist = false;
 
-  const toggleLock = () => {
+  // ── Lock toggle ───────────────────────────────────────────────
+  const setLockState = (locked) => {
     if (!mainWindow) return;
-    isLocked = !isLocked;
-    // setIgnoreMouseEvents called directly here in the main process — always works
+    isLocked = locked;
     mainWindow.setIgnoreMouseEvents(isLocked, { forward: true });
-    // Notify renderer to update its UI (lock icon, indicator)
     mainWindow.webContents.send('lock-state-changed', isLocked);
   };
 
-  globalShortcut.register('CommandOrControl+Shift+L', toggleLock);
-  globalShortcut.register('F8', toggleLock);
+  const toggleLock = () => setLockState(!isLocked);
 
-  // Allow renderer to request a lock toggle (e.g. clicking the padlock button)
+  // ── Minimalist toggle (auto-locks on enter, auto-unlocks on exit)
+  const toggleMinimalist = () => {
+    if (!mainWindow) return;
+    isMinimalist = !isMinimalist;
+
+    if (isMinimalist) {
+      // Entering minimalist → auto-lock
+      mainWindow.webContents.send('toggle-minimalist');
+      if (!isLocked) setLockState(true);
+    } else {
+      // Exiting minimalist → auto-unlock
+      if (isLocked) setLockState(false);
+      mainWindow.webContents.send('toggle-minimalist');
+    }
+  };
+
+  // ── Shortcut actions for reset/report ─────────────────────────
+  const resetEncounter = () => {
+    if (mainWindow) mainWindow.webContents.send('reset-encounter');
+  };
+
+  const openReport = () => {
+    if (mainWindow) mainWindow.webContents.send('open-report');
+  };
+
+  // ── Action map for dynamic shortcut registration ──────────────
+  const actionMap = {
+    toggleLock,
+    toggleMinimalist,
+    resetEncounter,
+    openReport
+  };
+
+  // ── Register shortcuts from keybindings config ────────────────
+  let currentBindings = loadKeybindings();
+
+  function registerShortcuts(bindings) {
+    // Unregister all first, then re-register
+    globalShortcut.unregisterAll();
+
+    // Always-available fallback: Ctrl+Shift+L for lock toggle
+    globalShortcut.register('CommandOrControl+Shift+L', toggleLock);
+
+    for (const [action, accelerator] of Object.entries(bindings)) {
+      if (!accelerator || accelerator === '') continue;
+      // Skip if this is the same as the hardcoded fallback
+      if (accelerator === 'CommandOrControl+Shift+L') continue;
+
+      const handler = actionMap[action];
+      if (!handler) continue;
+
+      try {
+        globalShortcut.register(accelerator, handler);
+        logToBrowser(`Registered shortcut: ${accelerator} → ${action}`);
+      } catch (e) {
+        console.error(`Failed to register shortcut ${accelerator} for ${action}:`, e);
+      }
+    }
+  }
+
+  registerShortcuts(currentBindings);
+
+  // ── IPC: Renderer requests ────────────────────────────────────
   ipcMain.on('request-toggle-lock', () => toggleLock());
+  ipcMain.on('request-toggle-minimalist', () => toggleMinimalist());
 
-  // Minimalist mode exit shortcut (F9)
-  globalShortcut.register('F9', () => {
-    if (mainWindow) mainWindow.webContents.send('exit-minimalist');
+  // ── IPC: Keybindings ──────────────────────────────────────────
+  ipcMain.handle('get-keybindings', () => {
+    return currentBindings;
   });
 
-  // Allow renderer to also request exit-minimalist via IPC (button click)
-  ipcMain.on('request-exit-minimalist', () => {
-    if (mainWindow) mainWindow.webContents.send('exit-minimalist');
+  ipcMain.handle('save-keybindings', (_event, bindings) => {
+    currentBindings = { ...DEFAULT_KEYBINDINGS, ...bindings };
+    const ok = saveKeybindings(currentBindings);
+    if (ok) registerShortcuts(currentBindings);
+    return ok;
   });
 
   app.on('activate', () => {
@@ -124,7 +223,7 @@ app.on('window-all-closed', () => {
   }
 });
 
-// IPC Handlers
+// ── IPC Handlers ──────────────────────────────────────────────────
 ipcMain.on('window-controls', (event, action) => {
   if (!mainWindow) return;
   if (action === 'close') {
@@ -140,9 +239,7 @@ ipcMain.on('set-opacity', (event, opacity) => {
   }
 });
 
-// Lock is now managed entirely in main process via request-toggle-lock and globalShortcut
-
-// File Parser Setup
+// ── File Parser Setup ─────────────────────────────────────────────
 let currentLogPath = '';
 let lastSize = 0;
 

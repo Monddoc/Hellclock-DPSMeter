@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import './App.css';
 import { formatNumber } from './utils';
-import { DamageMeter } from './components/DamageMeter';
+import { DamageMeter, loadColVisibility } from './components/DamageMeter';
+import type { ColumnId } from './components/DamageMeter';
 import { ReportModal } from './components/ReportModal';
+import { SettingsModal } from './components/SettingsModal';
 import { parseLogLine } from './parser';
 import { createEmptyEncounter, applyEvents } from './encounter';
 import type { EncounterState, DamageEvent } from './types';
@@ -17,30 +19,43 @@ function App() {
   const [activeTab, setActiveTab] = useState<'dealt' | 'received'>('dealt');
   const [opacity, setOpacity] = useState(0.85);
   const [showReport, setShowReport] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [isMinimalist, setIsMinimalist] = useState(false);
   const [primaryMetric, setPrimaryMetric] = useState<'total' | 'dps'>('total');
+  const [columnVisibility, setColumnVisibility] = useState<Record<ColumnId, boolean>>(loadColVisibility);
+  const [meterKey, setMeterKey] = useState<number>(0);
 
-  // Track cleanup functions for IPC listeners
-  const cleanupRefs = useRef<(() => void)[]>([]);
-
+  // ── Global IPC listeners (run once) ─────────────────────────────
   useEffect(() => {
-    const unsubs: (() => void)[] = [];
+    const unsubLock = window.electronAPI.onLockStateChanged((locked) => setIsLocked(locked));
+    const unsubMinimalist = window.electronAPI.onToggleMinimalist(() => setIsMinimalist(prev => !prev));
+    const unsubLog = window.electronAPI.onBackendLog((msg: string) => console.log('BACKEND:', msg));
 
-    const onLockChanged = (locked: boolean) => setIsLocked(locked);
-    window.electronAPI.onLockStateChanged(onLockChanged);
-    unsubs.push(() => { /* ipcRenderer.removeListener handled by re-register pattern */ });
-
-    const onExitMin = () => setIsMinimalist(false);
-    window.electronAPI.onExitMinimalist(onExitMin);
-
-    // Dev-only: pipe backend logs to the browser console
-    window.electronAPI.onBackendLog((msg: string) => console.log('BACKEND:', msg));
-
-    cleanupRefs.current = unsubs;
-    return () => { cleanupRefs.current.forEach(fn => fn()); };
+    return () => {
+      unsubLock();
+      unsubMinimalist();
+      unsubLog();
+    };
   }, []);
 
+  // ── Shortcut-triggered actions (reset / report) ─────────────────
+  useEffect(() => {
+    const unsubReset = window.electronAPI.onResetEncounter(() => {
+      handleReset();
+    });
+    const unsubReport = window.electronAPI.onOpenReport(() => {
+      setShowReport(true);
+    });
+
+    return () => {
+      unsubReset();
+      unsubReport();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [encounter]); // Re-register when encounter changes so handleReset captures latest state
+
+  // ── Log file watching ───────────────────────────────────────────
   useEffect(() => {
     if (logFolder) {
       window.electronAPI.startWatching(logFolder);
@@ -59,8 +74,13 @@ function App() {
 
     const handleCleared = () => setEncounter(createEmptyEncounter());
 
-    window.electronAPI.onNewLogLines(handleLines);
-    window.electronAPI.onLogCleared(handleCleared);
+    const unsubLines = window.electronAPI.onNewLogLines(handleLines);
+    const unsubCleared = window.electronAPI.onLogCleared(handleCleared);
+
+    return () => {
+      unsubLines();
+      unsubCleared();
+    };
   }, [logFolder]);
 
   const handleReset = () => {
@@ -70,6 +90,18 @@ function App() {
     }
     setHistoryIndex(-1);
     setEncounter(createEmptyEncounter());
+  };
+
+  const handleResetAllConfigs = () => {
+    localStorage.removeItem('hellclock_col_widths');
+    localStorage.removeItem('hellclock_col_visibility');
+    const defaultVis = { source: true, skill: true, sid: true, type: true, hits: true, damage: true };
+    setColumnVisibility(defaultVis);
+    setMeterKey(prev => prev + 1);
+    
+    // Reset opacity
+    setOpacity(0.85);
+    window.electronAPI.setOpacity(0.85);
   };
 
   const handleSelectFolder = async () => {
@@ -109,39 +141,12 @@ function App() {
   const displayedEncounter = historyIndex >= 0 ? encounterHistory[historyIndex] : encounter;
   const isViewingHistory = historyIndex >= 0;
 
-  const durationSec = (displayedEncounter.durationMs / 1000) || 0;
-  const totalDealtDps = displayedEncounter.totalDamageDealt / (durationSec || 1);
-  const totalReceivedDps = displayedEncounter.totalDamageReceived / (durationSec || 1);
+  const activeSec = Math.max(displayedEncounter.activeDurationMs, 1000) / 1000;
+  const totalDealtDps = displayedEncounter.totalDamageDealt / activeSec;
+  const totalReceivedDps = displayedEncounter.totalDamageReceived / activeSec;
 
   return (
     <div className={`app-container ${isMinimalist ? 'minimalist' : ''} ${isLocked ? 'locked' : ''}`} style={{ '--bg-color': isMinimalist ? 'transparent' : `rgba(15, 15, 20, ${opacity})` } as React.CSSProperties}>
-
-      {/* Minimalist exit button */}
-      {isMinimalist && !isLocked && (
-        <div
-          onClick={() => window.electronAPI.requestExitMinimalist()}
-          style={{
-            position: 'fixed', top: 0, right: 0,
-            padding: '8px 12px',
-            background: 'rgba(0,0,0,0.85)',
-            color: '#fff',
-            cursor: 'pointer',
-            zIndex: 9999,
-            opacity: 0,
-            transition: 'opacity 0.2s',
-            borderBottomLeftRadius: '8px',
-            fontSize: '11px',
-            fontWeight: '600',
-            userSelect: 'none',
-            pointerEvents: 'auto',
-          }}
-          onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-          onMouseLeave={e => (e.currentTarget.style.opacity = '0')}
-          title="Press F9 to exit minimalist mode"
-        >
-          × Exit Minimalist (F9)
-        </div>
-      )}
 
       <div className="title-bar" style={isLocked ? { WebkitAppRegion: 'no-drag', cursor: 'default' } as any : {}}>
         <div className="title">
@@ -160,8 +165,8 @@ function App() {
           <button className={`control-btn ${isLocked ? 'locked-btn' : ''}`} onClick={() => window.electronAPI.requestToggleLock()} title={isLocked ? "Unlock (F8)" : "Lock — click-through (F8)"}>
             {isLocked ? "🔒" : "🔓"}
           </button>
-          <button className="control-btn" onClick={() => setIsMinimalist(true)} title="Minimalist Mode">🗗</button>
-          <button className="control-btn" onClick={handleSelectFolder} title="Change Game Folder">⚙️</button>
+          <button className="control-btn" onClick={() => window.electronAPI.requestToggleMinimalist()} title="Minimalist Mode (F9)">🗗</button>
+          <button className="control-btn" onClick={() => setShowSettings(true)} title="Settings">⚙️</button>
           <button className="control-btn" onClick={() => window.electronAPI.windowControl('minimize')}>_</button>
           <button className="control-btn close" onClick={() => window.electronAPI.windowControl('close')}>×</button>
         </div>
@@ -174,26 +179,32 @@ function App() {
 
       <div className="content">
         <div className="encounter-header">
-          <span>{durationSec.toFixed(1)}s Combat</span>
-          <span>
-            {activeTab === 'dealt'
-              ? (primaryMetric === 'total' ? formatNumber(displayedEncounter.totalDamageDealt) : formatNumber(totalDealtDps))
-              : (primaryMetric === 'total' ? formatNumber(displayedEncounter.totalDamageReceived) : formatNumber(totalReceivedDps))}
-            {primaryMetric === 'total' ? ' Total Dmg' : ' Total DPS'}
+          <span>{activeSec.toFixed(1)}s Combat</span>
+          <span style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <span>
+              {activeTab === 'dealt'
+                ? (primaryMetric === 'total' ? formatNumber(displayedEncounter.totalDamageDealt) : formatNumber(totalDealtDps))
+                : (primaryMetric === 'total' ? formatNumber(displayedEncounter.totalDamageReceived) : formatNumber(totalReceivedDps))}
+              {primaryMetric === 'total' ? ' Total' : ' DPS'}
+            </span>
+            <span style={{ color: '#ff9944', fontSize: '11px', fontWeight: '600' }}>
+              ⚡ {formatNumber(activeTab === 'dealt' ? displayedEncounter.peakDpsDealt : displayedEncounter.peakDpsReceived)} Peak
+            </span>
           </span>
         </div>
 
         <DamageMeter
+          key={meterKey}
           skills={activeTab === 'dealt' ? displayedEncounter.dealtSkills : displayedEncounter.receivedSkills}
-          isDealtTab={activeTab === 'dealt'}
           primaryMetric={primaryMetric}
+          columnVisibility={columnVisibility}
         />
 
         {activeTab === 'received' && displayedEncounter.lastHitReceived && (
           <div style={{ padding: '8px', background: 'rgba(255, 69, 0, 0.1)', border: '1px solid rgba(255, 69, 0, 0.3)', borderRadius: '4px', marginTop: '8px', fontSize: '12px' }}>
             <div style={{ color: 'var(--color-fire)', fontWeight: 'bold', marginBottom: '4px', fontSize: '10px' }}>LATEST HIT RECEIVED</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: '500' }}>{displayedEncounter.lastHitReceived.source} (SK: {displayedEncounter.lastHitReceived.skillId})</span>
+              <span style={{ fontWeight: '500' }}>{displayedEncounter.lastHitReceived.source} — {displayedEncounter.lastHitReceived.skillName} <span style={{ color: '#666', fontSize: '10px' }}>SID:{displayedEncounter.lastHitReceived.skillId}</span></span>
               <span style={{ fontWeight: 'bold' }}>
                 {formatNumber(displayedEncounter.lastHitReceived.value)}
                 <span style={{ color: `var(--color-${displayedEncounter.lastHitReceived.damageType.toLowerCase()})`, fontSize: '10px', marginLeft: '6px' }}>{displayedEncounter.lastHitReceived.damageType}</span>
@@ -237,6 +248,7 @@ function App() {
       </div>
 
       {showReport && <ReportModal encounter={displayedEncounter} onClose={() => setShowReport(false)} />}
+      {showSettings && <SettingsModal logFolder={logFolder} onSelectFolder={handleSelectFolder} onClose={() => setShowSettings(false)} onColumnVisibilityChange={setColumnVisibility} onResetAll={handleResetAllConfigs} />}
     </div>
   );
 }

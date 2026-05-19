@@ -8,7 +8,7 @@ interface Props {
 }
 
 export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
-  const durationSec = encounter.durationMs / 1000 || 1;
+  const activeSec = Math.max(encounter.activeDurationMs, 1000) / 1000;
 
   const handleExportHtml = async () => {
     const getColorClass = (type: string) => {
@@ -57,10 +57,11 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
           .container { max-width: 1000px; margin: 0 auto; background: rgba(25,25,30,0.9); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
           h1 { color: #fff; margin-top: 0; border-bottom: 2px solid #333; padding-bottom: 10px; font-weight: 300; letter-spacing: 1px; }
           h2 { color: var(--color-fire); margin-top: 30px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; font-weight: 400; text-transform: uppercase; letter-spacing: 1px; font-size: 1.1em; }
-          .summary { display: flex; gap: 40px; margin-bottom: 20px; padding: 20px; background: rgba(0,0,0,0.3); border-radius: 6px; }
+          .summary { display: flex; gap: 40px; margin-bottom: 20px; padding: 20px; background: rgba(0,0,0,0.3); border-radius: 6px; flex-wrap: wrap; }
           .summary-item { display: flex; flex-direction: column; }
           .summary-label { font-size: 0.85em; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
           .summary-val { font-size: 1.5em; font-weight: bold; }
+          .summary-val.peak { color: #ff9944; }
           .tabs { display: flex; border-bottom: 1px solid #444; margin-bottom: 20px; }
           .tab-btn { background: none; border: none; color: #888; padding: 10px 20px; cursor: pointer; font-size: 1em; border-bottom: 3px solid transparent; transition: all 0.2s; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
           .tab-btn:hover { color: #fff; }
@@ -80,6 +81,7 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
           .ailment { color: #aaa; font-size: 0.85em; line-height: 1.4; }
           .numeric { text-align: right; font-family: monospace; font-size: 1.1em; }
           th.numeric { text-align: right; }
+          .peak { color: #ff9944; font-size: 0.85em; }
           .graph-row { display: flex; align-items: center; margin-bottom: 15px; }
           .graph-label { width: 250px; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 15px; }
           .graph-bar-container { flex: 1; background: rgba(255,255,255,0.05); height: 24px; border-radius: 4px; overflow: hidden; display: flex; position: relative; }
@@ -92,9 +94,11 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
         <div class="container">
           <h1>HELL CLOCK DPS REPORT</h1>
           <div class="summary">
-            <div class="summary-item"><span class="summary-label">Duration</span><span class="summary-val">${durationSec.toFixed(1)}s</span></div>
+            <div class="summary-item"><span class="summary-label">Active Combat</span><span class="summary-val">${activeSec.toFixed(1)}s</span></div>
             <div class="summary-item"><span class="summary-label">Total Dealt</span><span class="summary-val">${formatNumber(encounter.totalDamageDealt)}</span></div>
             <div class="summary-item"><span class="summary-label">Total Received</span><span class="summary-val">${formatNumber(encounter.totalDamageReceived)}</span></div>
+            <div class="summary-item"><span class="summary-label">Peak DPS (Dealt)</span><span class="summary-val peak">⚡ ${formatNumber(encounter.peakDpsDealt)}</span></div>
+            <div class="summary-item"><span class="summary-label">Peak DPS (Received)</span><span class="summary-val peak">⚡ ${formatNumber(encounter.peakDpsReceived)}</span></div>
           </div>
           <div class="tabs">
             <button class="tab-btn active" onclick="openTab(event,'tab-overview')">Overview</button>
@@ -110,15 +114,15 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
     // Last Hit (fully escaped)
     if (encounter.lastHitReceived) {
       const lhSource = escapeHtml(encounter.lastHitReceived.source);
-      const lhSkill  = escapeHtml(encounter.lastHitReceived.skillId);
+      const lhSkillName = escapeHtml(encounter.lastHitReceived.skillName);
+      const lhSid    = escapeHtml(encounter.lastHitReceived.skillId);
       const lhType   = escapeHtml(encounter.lastHitReceived.damageType);
       const lhTypeLC = escapeHtml(encounter.lastHitReceived.damageType.toLowerCase());
-      const lhName   = encounter.lastHitReceived.source === 'Player' ? lhSkill : `${lhSource} | ${lhSkill}`;
       html += `
         <div class="last-hit">
           <div style="color:var(--color-fire);font-weight:bold;margin-bottom:8px;font-size:0.85em;letter-spacing:1px;">LATEST HIT RECEIVED</div>
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-weight:500;font-size:1.1em;">${lhName}</span>
+            <span style="font-weight:500;font-size:1.1em;">${lhSource} — ${lhSkillName} <span style="color:#666;font-size:0.75em;">SID:${lhSid}</span></span>
             <span style="font-weight:bold;font-size:1.2em;font-family:monospace;">
               ${formatNumber(encounter.lastHitReceived.value)}
               <span style="color:var(--color-${lhTypeLC});font-size:0.8em;margin-left:8px;">${lhType}</span>
@@ -129,44 +133,47 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
     }
 
     // addTable helper (all user fields escaped)
-    const addTable = (title: string, skills: Record<string, SkillDamageRow>, isDealt: boolean = false) => {
+    const addTable = (title: string, skills: Record<string, SkillDamageRow>) => {
       const sorted = Object.values(skills).sort((a, b) => b.totalDamage - a.totalDamage);
       if (sorted.length === 0) return;
       html += `<h2>${escapeHtml(title)}</h2>
         <table>
           <tr>
-            ${isDealt ? '<th>SOURCE</th>' : ''}
-            <th>SKILL</th><th>TYPE</th>
+            <th>SOURCE</th>
+            <th>SKILL</th><th>SID</th><th>TYPE</th>
             <th class="numeric">HITS</th><th class="numeric">CRITS</th>
             <th class="numeric">DAMAGE</th><th class="numeric">DPS</th>
+            <th class="numeric">PEAK DPS</th>
             <th>AILMENTS</th>
           </tr>`;
       sorted.forEach(row => {
-        const safeSkill  = escapeHtml(row.skillId);
+        const safeSkillName = escapeHtml(row.skillName);
+        const safeSid    = escapeHtml(row.skillId);
         const safeSource = escapeHtml(row.source);
         const safeType   = escapeHtml(row.damageType);
-        const name = isDealt ? safeSkill : (row.source === 'Player' ? safeSkill : `${safeSource} | ${safeSkill}`);
         const critPct = row.totalHits > 0 ? ((row.critHits / row.totalHits) * 100).toFixed(1) : '0.0';
         const ailments = Object.entries(row.ailmentDamage)
           .filter(([_, v]) => v > 0)
           .map(([type, v]) => `${escapeHtml(type)}: ${formatNumber(v)} (${((v/row.totalDamage)*100).toFixed(1)}%)`)
           .join('<br/>');
         html += `<tr>
-          ${isDealt ? `<td style="color:#aaa;font-size:0.9em;">${safeSource}</td>` : ''}
-          <td style="font-weight:500;">${name}</td>
+          <td style="color:#aaa;font-size:0.9em;">${safeSource}</td>
+          <td style="font-weight:500;">${safeSkillName}</td>
+          <td style="color:#666;font-size:0.85em;text-align:center;">${safeSid}</td>
           <td class="${getColorClass(row.damageType)}" style="font-size:0.85em;">${safeType}</td>
           <td class="numeric" style="color:#ccc;">${row.totalHits}</td>
           <td class="numeric" style="color:#aaa;">${row.critHits} <span style="font-size:0.8em;color:#666;">(${critPct}%)</span></td>
           <td class="numeric" style="font-weight:bold;">${formatNumber(row.totalDamage)}</td>
           <td class="numeric" style="color:#ddd;">${formatNumber(row.dps)}</td>
+          <td class="numeric peak">⚡ ${formatNumber(row.peakDps)}</td>
           <td class="ailment">${ailments || '-'}</td>
         </tr>`;
       });
       html += `</table>`;
     };
 
-    addTable('DAMAGE DEALT', encounter.dealtSkills, true);
-    addTable('DAMAGE RECEIVED', encounter.receivedSkills, false);
+    addTable('DAMAGE DEALT', encounter.dealtSkills);
+    addTable('DAMAGE RECEIVED', encounter.receivedSkills);
 
     html += `</div>`; // End Tab 1
 
@@ -190,7 +197,7 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
     html += `<div id="tab-crits" class="tab-content"><h2>CRITICAL HIT RATES (DEALT)</h2>`;
     dealtSorted.forEach(row => {
       if (row.totalHits === 0) return;
-      const name = row.source === 'Player' ? escapeHtml(row.skillId) : `${escapeHtml(row.source)} | ${escapeHtml(row.skillId)}`;
+      const name = escapeHtml(row.skillName);
       const critPct = (row.critHits / row.totalHits) * 100;
       const nonCritPct = 100 - critPct;
       html += `
@@ -212,7 +219,7 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
       const igniteDmg = row.ailmentDamage['IGNITE'] || 0;
       const totalAilment = bleedDmg + igniteDmg;
       if (totalAilment === 0) return;
-      const name = row.source === 'Player' ? escapeHtml(row.skillId) : `${escapeHtml(row.source)} | ${escapeHtml(row.skillId)}`;
+      const name = escapeHtml(row.skillName);
       const ailmentPct = row.totalDamage > 0 ? (totalAilment / row.totalDamage) * 100 : 0;
       const nonAilmentPct = 100 - ailmentPct;
       const hex = getHexForType(row.damageType);
@@ -252,7 +259,7 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
     await window.electronAPI.exportHtml(html);
   };
 
-  const renderStats = (skills: Record<string, SkillDamageRow>, title: string, extraHeaderNode?: React.ReactNode, isDealt?: boolean) => {
+  const renderStats = (skills: Record<string, SkillDamageRow>, title: string, extraHeaderNode?: React.ReactNode) => {
     const sorted = Object.values(skills).sort((a, b) => b.totalDamage - a.totalDamage);
     if (sorted.length === 0) return <p style={{ color: '#aaa' }}>No data for {title.toLowerCase()}.</p>;
 
@@ -263,17 +270,22 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
         </h3>
         {extraHeaderNode}
         {sorted.map(row => {
-          const displayName = isDealt ? row.skillId : (row.source === 'Player' ? row.skillId : `${row.source} | ${row.skillId}`);
+          const displayName = row.skillName;
           const critPercent = row.totalHits > 0 ? ((row.critHits / row.totalHits) * 100).toFixed(1) : '0.0';
 
           return (
             <div key={row.key} style={{ marginBottom: 15, background: 'rgba(0,0,0,0.3)', padding: 10, borderRadius: 4 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <strong style={{ fontSize: 16 }}>
-                  {isDealt && <span style={{ color: '#aaa', fontWeight: 'normal', marginRight: 8 }}>{row.source}</span>}
-                  {displayName} <span style={{fontSize: 12, color: '#aaa', marginLeft: 8}}>{row.damageType}</span>
+                  <span style={{ color: '#aaa', fontWeight: 'normal', marginRight: 8 }}>{row.source}</span>
+                  {displayName} <span style={{fontSize: 11, color: '#666', marginLeft: 4}}>SID:{row.skillId}</span> <span style={{fontSize: 12, color: '#aaa', marginLeft: 8}}>{row.damageType}</span>
                 </strong>
-                <span>{formatNumber(row.totalDamage)} Dmg | {formatNumber(row.dps)} DPS</span>
+                <span>
+                  {formatNumber(row.totalDamage)} Dmg | {formatNumber(row.dps)} DPS
+                  {row.peakDps > 0 && (
+                    <span style={{ color: '#ff9944', marginLeft: 8, fontSize: 12 }}>⚡ {formatNumber(row.peakDps)} Peak</span>
+                  )}
+                </span>
               </div>
 
               <div style={{ display: 'flex', gap: 20, fontSize: 12, color: '#ccc' }}>
@@ -316,18 +328,20 @@ export const ReportModal: React.FC<Props> = ({ encounter, onClose }) => {
           <button className="control-btn close" onClick={onClose} style={{ fontSize: '20px' }}>×</button>
         </div>
         <div style={{ marginBottom: 15, fontSize: 14, color: '#ccc' }}>
-          <strong>Duration:</strong> {durationSec.toFixed(1)}s<br/>
-          <strong>Total Dealt:</strong> {formatNumber(encounter.totalDamageDealt)}<br/>
+          <strong>Active Combat:</strong> {activeSec.toFixed(1)}s<br/>
+          <strong>Total Dealt:</strong> {formatNumber(encounter.totalDamageDealt)}
+          <span style={{ color: '#ff9944', marginLeft: 12 }}>⚡ {formatNumber(encounter.peakDpsDealt)} Peak DPS</span><br/>
           <strong>Total Received:</strong> {formatNumber(encounter.totalDamageReceived)}
+          <span style={{ color: '#ff9944', marginLeft: 12 }}>⚡ {formatNumber(encounter.peakDpsReceived)} Peak DPS</span>
         </div>
 
-        {renderStats(encounter.dealtSkills, 'Damage Dealt', undefined, true)}
+        {renderStats(encounter.dealtSkills, 'Damage Dealt')}
 
         {renderStats(encounter.receivedSkills, 'Damage Received', encounter.lastHitReceived ? (
           <div style={{ padding: '12px', background: 'rgba(255,69,0,0.1)', border: '1px solid rgba(255,69,0,0.3)', borderRadius: '4px', marginBottom: '15px', marginTop: '10px' }}>
             <div style={{ color: 'var(--color-fire)', fontWeight: 'bold', marginBottom: '4px', fontSize: '12px' }}>LATEST HIT RECEIVED (POSSIBLE DEATH CAUSE)</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: '500' }}>{encounter.lastHitReceived.source === 'Player' ? encounter.lastHitReceived.skillId : `${encounter.lastHitReceived.source} | ${encounter.lastHitReceived.skillId}`}</span>
+              <span style={{ fontWeight: '500' }}>{encounter.lastHitReceived.source} — {encounter.lastHitReceived.skillName} <span style={{ color: '#666', fontSize: '10px' }}>SID:{encounter.lastHitReceived.skillId}</span></span>
               <span style={{ fontWeight: 'bold', fontSize: '16px' }}>
                 {formatNumber(encounter.lastHitReceived.value)}
                 <span style={{ color: `var(--color-${encounter.lastHitReceived.damageType.toLowerCase()})`, fontSize: '12px', marginLeft: '6px' }}>{encounter.lastHitReceived.damageType}</span>

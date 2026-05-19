@@ -1,14 +1,31 @@
 import type { DamageEvent, DamageType, AilmentType } from './types';
 
 export function parseLogLine(line: string): DamageEvent[] {
-  // e.g. (04:38:17:116)S:Player|T:|SID:1|V:7,734.42|FIRE:7,734.42
-  // e.g. (04:41:06:530)S:Summon  The  Guard -|T:Cursed Rat|SID:202|V:2,947.90|DOT|PHYSICAL:2,947.90
-  
-  const match = line.match(/^\((.*?)\)S:(.*?)\|T:(.*?)\|(?:SID|SK):(.*?)\|V:([\d,.]+)\|(.*)$/);
-  if (!match) return [];
+  // New format: (timestamp)S:source|T:target|SID:id|SK:key|SN:name|V:value|...
+  // e.g. (03:56:37:981)S:Summon  Marksmen|T:Dummy|SID:3|SK:Repeater|SN:Repeater|V:407,726.52|CRIT|PHYSICAL:407,726.52
 
-  const [, timeStr, sourceStr, targetStr, skillIdStr, valueStr, restStr] = match;
-  
+  let timeStr: string;
+  let sourceStr: string;
+  let targetStr: string;
+  let sidStr: string;
+  let snStr: string;
+  let valueStr: string;
+  let restStr: string;
+
+  // Try new format first (SID + SK + SN)
+  const newMatch = line.match(/^\((.*?)\)S:(.*?)\|T:(.*?)\|SID:(.*?)\|SK:(.*?)\|SN:(.*?)\|V:([\d,.]+)\|(.*)$/);
+
+  if (newMatch) {
+    [, timeStr, sourceStr, targetStr, sidStr, , snStr, valueStr, restStr] = newMatch;
+  } else {
+    // Fallback: old format (SID or SK only, no SN)
+    // e.g. (04:38:17:116)S:Player|T:|SID:1|V:7,734.42|FIRE:7,734.42
+    const oldMatch = line.match(/^\((.*?)\)S:(.*?)\|T:(.*?)\|(?:SID|SK):(.*?)\|V:([\d,.]+)\|(.*)$/);
+    if (!oldMatch) return [];
+    [, timeStr, sourceStr, targetStr, sidStr, valueStr, restStr] = oldMatch;
+    snStr = sidStr; // In old format, use the SID/SK value as the name too
+  }
+
   const timeMs = parseTimeToMs(timeStr);
   const totalValue = parseFloat(valueStr.replace(/,/g, ''));
   
@@ -39,7 +56,8 @@ export function parseLogLine(line: string): DamageEvent[] {
       timeMs,
       source: sourceStr.trim(),
       target: targetStr.trim() || 'Unknown Target',
-      skillId: cleanSkillName(skillIdStr),
+      skillId: sidStr.trim(),
+      skillName: cleanSkillName(snStr),
       value: val,
       damageType,
       ailment,
