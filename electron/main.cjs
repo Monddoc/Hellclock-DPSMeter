@@ -42,7 +42,8 @@ const DEFAULT_KEYBINDINGS = {
   toggleLock: 'F8',
   toggleMinimalist: 'F9',
   resetEncounter: '',
-  openReport: ''
+  openReport: '',
+  toggleCollapseExpand: ''
 };
 
 function loadKeybindings() {
@@ -70,7 +71,7 @@ function saveKeybindings(bindings) {
 // ── Window creation ───────────────────────────────────────────────
 function createWindow() {
   const bounds = getSavedBounds();
-  
+
   mainWindow = new BrowserWindow({
     width: bounds.width || 500,
     height: bounds.height || 700,
@@ -95,7 +96,7 @@ function createWindow() {
 
   // Save bounds when window is resized or moved
   mainWindow.on('close', () => saveBounds(mainWindow.getBounds()));
-  
+
   let resizeTimer;
   mainWindow.on('resize', () => {
     clearTimeout(resizeTimer);
@@ -153,12 +154,17 @@ app.whenReady().then(() => {
     if (mainWindow) mainWindow.webContents.send('open-report');
   };
 
+  const toggleCollapseExpand = () => {
+    if (mainWindow) mainWindow.webContents.send('toggle-collapse-expand');
+  };
+
   // ── Action map for dynamic shortcut registration ──────────────
   const actionMap = {
     toggleLock,
     toggleMinimalist,
     resetEncounter,
-    openReport
+    openReport,
+    toggleCollapseExpand
   };
 
   // ── Register shortcuts from keybindings config ────────────────
@@ -264,11 +270,11 @@ ipcMain.handle('start-watching', (event, folderPath) => {
   const filePath = path.join(folderPath, 'Damage.log');
   currentLogPath = filePath;
   lastSize = 0;
-  
+
   if (fs.existsSync(filePath)) {
     lastSize = fs.statSync(filePath).size;
     logToBrowser('File exists, watching. Initial size: ' + lastSize);
-    
+
     // Using watchFile for reliable size tracking, watching every 500ms
     fs.watchFile(filePath, { interval: 500 }, (curr, prev) => {
       if (curr.size < prev.size) {
@@ -284,16 +290,16 @@ ipcMain.handle('start-watching', (event, folderPath) => {
           end: curr.size,
           encoding: 'utf8'
         });
-        
+
         stream.on('error', (err) => {
           logToBrowser('Stream error: ' + err.message);
         });
-        
+
         let newContent = '';
         stream.on('data', chunk => {
           newContent += chunk;
         });
-        
+
         stream.on('end', () => {
           lastSize = curr.size;
           const lines = newContent.split(/\r?\n/).filter(line => line.trim() !== '');

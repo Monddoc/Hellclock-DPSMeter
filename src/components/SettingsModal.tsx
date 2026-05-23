@@ -15,14 +15,16 @@ const ACTION_LABELS: Record<keyof Keybindings, string> = {
   toggleLock: 'Toggle Lock',
   toggleMinimalist: 'Toggle Minimalist',
   resetEncounter: 'Reset Encounter',
-  openReport: 'Open Report',
+  openReport: 'Open Details',
+  toggleCollapseExpand: 'Toggle Collapse/Expand All',
 };
 
 const ACTION_DESCRIPTIONS: Record<keyof Keybindings, string> = {
   toggleLock: 'Lock/unlock the overlay (click-through mode)',
   toggleMinimalist: 'Enter/exit minimalist mode (auto-locks)',
   resetEncounter: 'Reset the current encounter data',
-  openReport: 'Open the encounter report modal',
+  openReport: 'Open the encounter details modal',
+  toggleCollapseExpand: 'Collapse or expand all rows in the damage meter',
 };
 
 /**
@@ -166,7 +168,8 @@ export const SettingsModal: React.FC<Props> = ({ logFolder, onSelectFolder, onCl
       toggleLock: 'F8',
       toggleMinimalist: 'F9',
       resetEncounter: '',
-      openReport: ''
+      openReport: '',
+      toggleCollapseExpand: ''
     };
 
     setSaving(true);

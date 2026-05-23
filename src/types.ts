@@ -7,6 +7,7 @@ export interface DamageEvent {
   source: string;
   target: string;
   skillId: string;   // SID value (numeric ID)
+  skillKey: string;  // SK value (skill family key)
   skillName: string; // SN value (display name)
   value: number;
   damageType: DamageType;
@@ -19,12 +20,14 @@ export interface DamageEvent {
 export interface SkillDamageRow {
   key: string;
   skillId: string;   // SID value (numeric ID)
+  skillKey: string;  // SK value (skill family key)
   skillName: string; // SN value (display name)
   source: string;
   damageType: DamageType;
   totalDamage: number;
   dps: number;
   peakDps: number;
+  maxHit: number;
   totalHits: number;
   critHits: number;
   ailmentDamage: Record<AilmentType, number>;
@@ -49,7 +52,13 @@ export interface EncounterState {
   peakDpsReceived: number;
   dealtSkills: Record<string, SkillDamageRow>;
   receivedSkills: Record<string, SkillDamageRow>;
+  peakDpsBySkillKey: Record<string, number>;
+  peakDpsBySourceSkillKey: Record<string, number>;
   lastHitReceived: DamageEvent | null;
+  bleedUptimeMs: number;
+  igniteUptimeMs: number;
+  _lastBleedTickTime: number;
+  _lastIgniteTickTime: number;
   /** Last event timestamp — used for gap detection */
   _lastEventTime: number;
   /** Recent events buffer — used for peak DPS sliding window */
@@ -61,6 +70,7 @@ export interface Keybindings {
   toggleMinimalist: string;
   resetEncounter: string;
   openReport: string;
+  toggleCollapseExpand: string;
 }
 
 declare global {
@@ -74,14 +84,15 @@ declare global {
       onNewLogLines: (callback: (lines: string[]) => void) => () => void;
       onLogCleared: (callback: () => void) => () => void;
       onLockStateChanged: (callback: (locked: boolean) => void) => () => void;
-      requestToggleLock: () => void;
       onToggleMinimalist: (callback: () => void) => () => void;
+      requestToggleLock: () => void;
       requestToggleMinimalist: () => void;
       onBackendLog: (callback: (msg: string) => void) => () => void;
       getKeybindings: () => Promise<Keybindings>;
       saveKeybindings: (bindings: Keybindings) => Promise<boolean>;
       onResetEncounter: (callback: () => void) => () => void;
       onOpenReport: (callback: () => void) => () => void;
+      onToggleCollapseExpand: (callback: () => void) => () => void;
     };
   }
 }

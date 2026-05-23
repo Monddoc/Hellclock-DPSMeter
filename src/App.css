@@ -5,6 +5,7 @@
   --font-family: 'Inter', system-ui, sans-serif;
   
   --color-physical: #f4c430;
+  --color-bleed: #ff1a1a;
   --color-fire: #ff4500;
   --color-lightning: #00f0ff;
   --color-plague: #39ff14;
@@ -478,5 +479,47 @@ body {
 
 .column-toggle-row:hover .column-toggle-label {
   color: #fff;
+}
+
+/* ── Premium Update Banner ────────────────────────────────────── */
+.update-banner {
+  background: linear-gradient(135deg, rgba(255, 153, 68, 0.95), rgba(187, 0, 0, 0.95));
+  color: #ffffff;
+  padding: 6px 12px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease-in-out;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  user-select: none;
+  animation: slide-down-banner 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.update-banner:hover {
+  filter: brightness(1.15);
+  box-shadow: 0 4px 12px rgba(255, 153, 68, 0.4);
+}
+
+@keyframes slide-down-banner {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ── Interactive Row Styling ──────────────────────────────────── */
+.actor-row {
+  transition: background-color 0.15s ease-in-out;
+}
+
+.actor-row:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
 }
 

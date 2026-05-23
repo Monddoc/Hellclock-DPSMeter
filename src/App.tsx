@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { formatNumber } from './utils';
 import { DamageMeter, loadColVisibility } from './components/DamageMeter';
@@ -8,6 +8,8 @@ import { SettingsModal } from './components/SettingsModal';
 import { parseLogLine } from './parser';
 import { createEmptyEncounter, applyEvents } from './encounter';
 import type { EncounterState, DamageEvent } from './types';
+// @ts-ignore
+import packageJson from '../package.json';
 
 const MAX_HISTORY = 3;
 
@@ -18,6 +20,7 @@ function App() {
   const [historyIndex, setHistoryIndex] = useState<number>(-1); // -1 = viewing live data
   const [activeTab, setActiveTab] = useState<'dealt' | 'received'>('dealt');
   const [opacity, setOpacity] = useState(0.85);
+  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [showReport, setShowReport] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
@@ -25,18 +28,59 @@ function App() {
   const [primaryMetric, setPrimaryMetric] = useState<'total' | 'dps'>('total');
   const [columnVisibility, setColumnVisibility] = useState<Record<ColumnId, boolean>>(loadColVisibility);
   const [meterKey, setMeterKey] = useState<number>(0);
+  const meterRef = useRef<any>(null);
 
   // ── Global IPC listeners (run once) ─────────────────────────────
   useEffect(() => {
     const unsubLock = window.electronAPI.onLockStateChanged((locked) => setIsLocked(locked));
     const unsubMinimalist = window.electronAPI.onToggleMinimalist(() => setIsMinimalist(prev => !prev));
     const unsubLog = window.electronAPI.onBackendLog((msg: string) => console.log('BACKEND:', msg));
+    const unsubCollapse = window.electronAPI.onToggleCollapseExpand(() => {
+      meterRef.current?.toggleCollapseExpandAll();
+    });
 
     return () => {
       unsubLock();
       unsubMinimalist();
       unsubLog();
+      unsubCollapse();
     };
+  }, []);
+
+  // ── GitHub Latest Release Update Checker ────────────────────────
+  useEffect(() => {
+    fetch('https://api.github.com/repos/Monddoc/Hellclock-DPSMeter/releases/latest')
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to fetch latest release');
+        return res.json();
+      })
+      .then(data => {
+        const latestTag = data.tag_name;
+        if (latestTag) {
+          const latestVersion = latestTag.startsWith('v') ? latestTag.substring(1) : latestTag;
+          const localVersion = packageJson.version;
+
+          if (latestVersion !== localVersion) {
+            const latestParts = latestVersion.split('.').map(Number);
+            const localParts = localVersion.split('.').map(Number);
+            let isNewer = false;
+            for (let i = 0; i < 3; i++) {
+              const latVal = latestParts[i] || 0;
+              const locVal = localParts[i] || 0;
+              if (latVal > locVal) {
+                isNewer = true;
+                break;
+              } else if (latVal < locVal) {
+                break;
+              }
+            }
+            if (isNewer) {
+              setUpdateAvailable(latestTag);
+            }
+          }
+        }
+      })
+      .catch(err => console.error('Update checker error:', err));
   }, []);
 
   // ── Shortcut-triggered actions (reset / report) ─────────────────
@@ -95,13 +139,14 @@ function App() {
   const handleResetAllConfigs = () => {
     localStorage.removeItem('hellclock_col_widths');
     localStorage.removeItem('hellclock_col_visibility');
-    const defaultVis = { source: true, skill: true, sid: true, type: true, hits: true, damage: true };
+    const defaultVis = { source: true, skill: true, sid: false, type: true, hits: true, maxHit: true, damage: true };
     setColumnVisibility(defaultVis);
     setMeterKey(prev => prev + 1);
     
     // Reset opacity
     setOpacity(0.85);
-    window.electronAPI.setOpacity(0.85);
+    window.electronAPI.setOpacity(1.0);
+    document.documentElement.style.setProperty('--bg-color', 'rgba(15, 15, 20, 0.85)');
   };
 
   const handleSelectFolder = async () => {
@@ -172,6 +217,16 @@ function App() {
         </div>
       </div>
 
+      {updateAvailable && (
+        <div 
+          className="update-banner"
+          onClick={() => window.open('https://github.com/Monddoc/Hellclock-DPSMeter/releases', '_blank')}
+          title="Click to view releases on GitHub"
+        >
+          ✨ New Version {updateAvailable} Available! Click to Update
+        </div>
+      )}
+
       <div className="tabs">
         <button className={`tab ${activeTab === 'dealt' ? 'active' : ''}`} onClick={() => setActiveTab('dealt')}>Dealt</button>
         <button className={`tab ${activeTab === 'received' ? 'active' : ''}`} onClick={() => setActiveTab('received')}>Received</button>
@@ -194,8 +249,10 @@ function App() {
         </div>
 
         <DamageMeter
+          ref={meterRef}
           key={meterKey}
-          skills={activeTab === 'dealt' ? displayedEncounter.dealtSkills : displayedEncounter.receivedSkills}
+          encounter={displayedEncounter}
+          activeTab={activeTab}
           primaryMetric={primaryMetric}
           columnVisibility={columnVisibility}
         />
@@ -229,7 +286,7 @@ function App() {
               title={`View past encounter ${i + 1}`}
               style={{ padding: '2px 6px', fontSize: '10px', minWidth: 24 }}
             >
-              -{i + 1}
+              {i + 1}
             </button>
           ))}
           <button
@@ -239,7 +296,7 @@ function App() {
           >
             {primaryMetric === 'total' ? 'Show DPS' : 'Show Total'}
           </button>
-          <button className="toolbar-btn" onClick={() => setShowReport(true)}>Report</button>
+          <button className="toolbar-btn" onClick={() => setShowReport(true)}>Details</button>
           {isViewingHistory
             ? <button className="toolbar-btn" onClick={() => setHistoryIndex(-1)}>← Live</button>
             : <button className="toolbar-btn" onClick={handleReset}>Reset</button>

@@ -1,7 +1,7 @@
 directories:
   output: dist-electron
   buildResources: build
-appId: com.vladmir.hellclockdps
+appId: com.hellclock.dps
 productName: Hell Clock DPS
 compression: maximum
 files:

@@ -1,7 +1,7 @@
 {
-  "name": "damagelogger",
+  "name": "hellclock-dpsmeter",
   "private": true,
-  "version": "0.0.24",
+  "version": "0.0.25",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -14,7 +14,7 @@
     "preview": "vite preview"
   },
   "build": {
-    "appId": "com.vladmir.hellclockdps",
+    "appId": "com.hellclock.dps",
     "productName": "Hell Clock DPS",
     "directories": {
       "output": "dist-electron"

@@ -8,6 +8,7 @@ export function parseLogLine(line: string): DamageEvent[] {
   let sourceStr: string;
   let targetStr: string;
   let sidStr: string;
+  let skStr: string;
   let snStr: string;
   let valueStr: string;
   let restStr: string;
@@ -16,25 +17,26 @@ export function parseLogLine(line: string): DamageEvent[] {
   const newMatch = line.match(/^\((.*?)\)S:(.*?)\|T:(.*?)\|SID:(.*?)\|SK:(.*?)\|SN:(.*?)\|V:([\d,.]+)\|(.*)$/);
 
   if (newMatch) {
-    [, timeStr, sourceStr, targetStr, sidStr, , snStr, valueStr, restStr] = newMatch;
+    [, timeStr, sourceStr, targetStr, sidStr, skStr, snStr, valueStr, restStr] = newMatch;
   } else {
     // Fallback: old format (SID or SK only, no SN)
     // e.g. (04:38:17:116)S:Player|T:|SID:1|V:7,734.42|FIRE:7,734.42
     const oldMatch = line.match(/^\((.*?)\)S:(.*?)\|T:(.*?)\|(?:SID|SK):(.*?)\|V:([\d,.]+)\|(.*)$/);
     if (!oldMatch) return [];
     [, timeStr, sourceStr, targetStr, sidStr, valueStr, restStr] = oldMatch;
+    skStr = sidStr;
     snStr = sidStr; // In old format, use the SID/SK value as the name too
   }
 
   const timeMs = parseTimeToMs(timeStr);
   const totalValue = parseFloat(valueStr.replace(/,/g, ''));
-  
+
   let isCrit = false;
   let isDot = false;
-  
+
   const tags = restStr.split('|');
   const typeValues: { type: DamageType, value: number }[] = [];
-  
+
   for (const tag of tags) {
     if (tag === 'CRIT') isCrit = true;
     else if (tag === 'DOT') isDot = true;
@@ -45,11 +47,31 @@ export function parseLogLine(line: string): DamageEvent[] {
   }
 
   const events: DamageEvent[] = [];
-  
+
   const createEvent = (damageType: DamageType, val: number, critFlag: boolean): DamageEvent => {
     let ailment: AilmentType = 'NONE';
     if (isDot && damageType === 'PHYSICAL') ailment = 'BLEED';
     if (isDot && damageType === 'FIRE') ailment = 'IGNITE';
+
+    const cleanedSK = cleanSkillName(skStr);
+    let cleanedSN = cleanSkillName(snStr);
+
+    if (cleanedSN && cleanedSK) {
+      const lowerSK = cleanedSK.toLowerCase();
+      const lowerSN = cleanedSN.toLowerCase();
+      
+      if (lowerSN !== lowerSK && lowerSN.startsWith(lowerSK)) {
+        const nextChar = cleanedSN.charAt(cleanedSK.length);
+        // Only strip if followed by non-alphanumeric separator (like space or hyphen)
+        if (nextChar === '' || /^[^\w\d]/.test(nextChar) || nextChar === ' ') {
+          let rest = cleanedSN.substring(cleanedSK.length).trim();
+          rest = rest.replace(/^[\s\-:|~>#]+/, '').trim();
+          if (rest.length > 0) {
+            cleanedSN = rest;
+          }
+        }
+      }
+    }
 
     return {
       timestamp: timeStr,
@@ -57,7 +79,8 @@ export function parseLogLine(line: string): DamageEvent[] {
       source: sourceStr.trim(),
       target: targetStr.trim() || 'Unknown Target',
       skillId: sidStr.trim(),
-      skillName: cleanSkillName(snStr),
+      skillKey: cleanedSK,
+      skillName: cleanedSN,
       value: val,
       damageType,
       ailment,
@@ -93,10 +116,13 @@ function parseTimeToMs(timeStr: string): number {
 function cleanSkillName(name: string): string {
   if (!name) return name;
   return name
+    .replace(/\(Clone\)/gi, '')
+    .replace(/\[\d+\]/g, '')
     .replace(/Skill\s*Definition/gi, '')
     .replace(/SkillDefinition/gi, '')
     .replace(/Skill/gi, '')
     .replace(/Definition/gi, '')
+    .replace(/Status/gi, ' Status')
     .replace(/\bQuils\b/gi, 'Quills')
     .replace(/\s+/g, ' ')
     .trim();

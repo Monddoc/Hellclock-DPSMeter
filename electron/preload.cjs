@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onBackendLog: (callback) => onChannel('backend-log', (msg) => callback(msg)),
   onResetEncounter: (callback) => onChannel('reset-encounter', () => callback()),
   onOpenReport: (callback) => onChannel('open-report', () => callback()),
+  onToggleCollapseExpand: (callback) => onChannel('toggle-collapse-expand', () => callback()),
 
   // Requests to main process
   requestToggleLock: () => ipcRenderer.send('request-toggle-lock'),
